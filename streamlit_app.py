@@ -2,16 +2,20 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# Seiteneinstellungen
+# Dunkles Theme und breites Layout
 st.set_page_config(
     page_title="Job Search Assistant",
     page_icon="💼",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': 'Job Search Assistant • Built by JFdC/Claude'
+    }
 )
 
-# Job-Such Funktionen
 def search_jobs(keywords, locations):
-    # Simulierte Suchergebnisse
     jobs_data = [
         {
             'title': 'Head of Human Resources',
@@ -19,7 +23,20 @@ def search_jobs(keywords, locations):
             'location': 'Wien',
             'salary': '120k-150k',
             'match_score': 95,
-            'description': 'Strategische HR-Führungsposition mit Fokus auf Transformation'
+            'description': '''Strategische HR-Führungsposition mit Fokus auf Transformation
+
+Aufgaben:
+• Gestaltung und Umsetzung der HR-Strategie
+• Führung und Weiterentwicklung des HR-Teams
+• Transformation der HR-Prozesse und -Systeme
+• Talent Management und Succession Planning
+
+Anforderungen:
+• Mehrjährige Führungserfahrung im HR-Bereich
+• Erfahrung mit digitaler Transformation
+• Exzellente Kommunikationsfähigkeiten
+• Verhandlungssicheres Deutsch und Englisch''',
+            'url': 'https://www.erstegroup.com/en/career'
         },
         {
             'title': 'Leiter People & Culture',
@@ -27,7 +44,20 @@ def search_jobs(keywords, locations):
             'location': 'Wien',
             'salary': '110k-140k',
             'match_score': 88,
-            'description': 'Gesamtverantwortung für den HR-Bereich'
+            'description': '''Gesamtverantwortung für den HR-Bereich
+
+Aufgaben:
+• Strategische Personalentwicklung
+• Change Management und Kulturwandel
+• Recruitment und Employer Branding
+• Performance Management
+
+Anforderungen:
+• HR-Führungserfahrung
+• Change Management Know-how
+• Stark in Konzeption und Umsetzung
+• Ausgeprägte Führungskompetenz''',
+            'url': 'https://karriere.post.at'
         }
     ]
     return pd.DataFrame(jobs_data)
@@ -40,21 +70,18 @@ st.write("Optimiert für HR & Organisationsentwicklung Positionen in DACH")
 with st.sidebar:
     st.header("🔍 Suchfilter")
     
-    # Position
     keywords = st.multiselect(
         "Position",
         ["HR Leitung", "Head of HR", "Personalleitung", "People & Culture"],
         ["HR Leitung"]
     )
     
-    # Standort
     locations = st.multiselect(
         "Standorte",
         ["Wien", "Graz", "Linz", "Salzburg", "Stuttgart", "München"],
         ["Wien"]
     )
     
-    # Gehalt
     salary_range = st.slider(
         "Gehaltsrange (k€)",
         min_value=80,
@@ -63,7 +90,6 @@ with st.sidebar:
         step=10
     )
     
-    # Match Score
     min_match = st.slider(
         "Minimum Match Score",
         min_value=0,
@@ -75,15 +101,23 @@ with st.sidebar:
 # Hauptbereich
 if st.button("🔎 Neue Suche starten", type="primary"):
     with st.spinner('Suche läuft...'):
-        # Jobs suchen
         df = search_jobs(keywords, locations)
         
-        # Ergebnisse anzeigen
         if not df.empty:
             st.write(f"🎯 Gefunden: {len(df)} passende Positionen")
             
-            # Ergebnistabelle
-            st.dataframe(df)
+            # Formatierte Tabelle
+            st.dataframe(
+                df[['title', 'company', 'location', 'salary', 'match_score']].style
+                .background_gradient(subset=['match_score'], cmap='Blues')
+                .format({'match_score': '{:.0f}%'})
+                .set_properties(**{
+                    'background-color': '#0e1117',
+                    'color': 'white',
+                    'border-color': '#21262d'
+                }),
+                height=400
+            )
             
             # Job Details
             st.subheader("🔍 Job Details")
@@ -94,19 +128,32 @@ if st.button("🔎 Neue Suche starten", type="primary"):
             
             if selected_job:
                 job = df[df['title'] == selected_job].iloc[0]
-                st.markdown(f"""
-                ### {job['title']}
-                **Unternehmen:** {job['company']}  
-                **Standort:** {job['location']}  
-                **Gehalt:** {job['salary']}  
-                **Match Score:** {job['match_score']}%
                 
-                **Beschreibung:**  
-                {job['description']}
-                """)
-        else:
-            st.warning("Keine Ergebnisse gefunden.")
+                col1, col2 = st.columns([2,1])
+                
+                with col1:
+                    st.markdown(f"""
+                    ### {job['title']}
+                    **Unternehmen:** {job['company']}  
+                    **Standort:** {job['location']}  
+                    **Gehalt:** {job['salary']}  
+                    **Match Score:** {job['match_score']}%
+                    
+                    **Beschreibung:**  
+                    {job['description']}
+                    
+                    [🔗 Zur Stellenanzeige]({job['url']})
+                    """)
+                
+                with col2:
+                    st.markdown("""
+                    #### Match Details
+                    - ✅ Führungserfahrung
+                    - ✅ Transformationserfahrung
+                    - ✅ Internationale Erfahrung
+                    - ✅ Sprachkenntnisse
+                    """)
 
 # Footer
 st.markdown("---")
-st.markdown("*Powered by Streamlit* • *JFdCxClaude*")
+st.markdown("*Powered by Streamlit* • *JFdC/Claude*")
