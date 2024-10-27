@@ -199,4 +199,4 @@ with col2:
 
 # Footer
 st.markdown("---")
-st.markdown("*Powered by Streamlit* • *Built for iPad*")
+st.markdown("*Powered by Streamlit* • *Built by JFdC and Claude*")
