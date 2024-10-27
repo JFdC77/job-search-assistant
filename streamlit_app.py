@@ -126,7 +126,7 @@ if st.button("🔎 Neue Suche starten", type="primary"):
                 df['title'].tolist()
             )
             
-            if selected_job:
+                        if selected_job:
                 job = df[df['title'] == selected_job].iloc[0]
                 
                 col1, col2 = st.columns([2,1])
@@ -139,19 +139,41 @@ if st.button("🔎 Neue Suche starten", type="primary"):
                     **Gehalt:** {job['salary']}  
                     **Match Score:** {job['match_score']}%
                     
-                    **Beschreibung:**  
-                    {job['description']}
+                    ### Aufgaben:
+                    • Gestaltung und Umsetzung der HR-Strategie
+                    • Führung und Weiterentwicklung des HR-Teams (15-20 Mitarbeiter)
+                    • Verantwortung für alle HR-Prozesse und -Systeme
+                    • Change Management und Kulturentwicklung
+                    • Steuerung des Talent Management Programms
                     
-                    [🔗 Zur Stellenanzeige]({job['url']})
+                    ### Anforderungen:
+                    • Mehrjährige Führungserfahrung im HR-Bereich
+                    • Nachweisliche Erfolge in der digitalen Transformation
+                    • Exzellente Kommunikationsfähigkeiten
+                    • Verhandlungssicheres Deutsch und Englisch
+                    
+                    [🔗 Direkt zur Stellenanzeige]({job['url']})
                     """)
                 
                 with col2:
                     st.markdown("""
-                    #### Match Details
-                    - ✅ Führungserfahrung
-                    - ✅ Transformationserfahrung
-                    - ✅ Internationale Erfahrung
-                    - ✅ Sprachkenntnisse
+                    ### Match Analysis 
+                    
+                    #### Stärken
+                    ✅ Führungserfahrung  
+                    ✅ Digitale Transformation  
+                    ✅ Change Management  
+                    ✅ Mehrsprachigkeit
+                    
+                    #### Passende Erfahrungen
+                    ✓ HR Transformation  
+                    ✓ Internationale Teams  
+                    ✓ Talent Development  
+                    ✓ Kulturwandel
+                    
+                    #### Entwicklungsfelder
+                    • Bankspezifische Regulierungen
+                    • Fintech Entwicklungen
                     """)
 
 # Footer
