@@ -10,121 +10,133 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+import requests
+from bs4 import BeautifulSoup
+import time
+
 def get_job_data():
-    return [
-        {
-            'title': 'Head of Human Resources',
-            'company': 'Erste Group Bank AG',
-            'location': 'Wien',
-            'salary': '120k-150k',
-            'match_score': 95,
-            'description': '''### Rolle & Verantwortung
-• Strategische Führung des HR-Bereichs
-• Weiterentwicklung der HR-Organisation
-• Gestaltung der Transformationsprozesse
-• Management des 15-köpfigen Teams
-
-### Schwerpunkte
-• Digitale Transformation des HR-Bereichs
-• Modernisierung der HR-Prozesse
-• Talent Management & Entwicklung
-• Change Management & Kulturwandel
-
-### Anforderungsprofil
-• Mehrjährige HR-Führungserfahrung
-• Nachweisliche Transformationserfolge
-• Exzellente Kommunikationsfähigkeiten
-• Deutsch & Englisch verhandlungssicher''',
-            'url': 'https://www.erstegroup.com/career',
-            'requirements': [
-                'Führungserfahrung',
-                'Change Management',
-                'Digitale Transformation',
-                'Mehrsprachigkeit',
-                'Banking-Hintergrund'
+    jobs = []
+    
+    # Karriere.at
+    def scrape_karriere_at():
+        try:
+            search_terms = [
+                'Head+HR',
+                'Personalleitung',
+                'Head+of+People',
+                'HR+Director'
+            ]
+            
+            base_url = "https://www.karriere.at/jobs"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15'
+            }
+            
+            for term in search_terms:
+                url = f"{base_url}/{term}"
+                response = requests.get(url, headers=headers)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                job_listings = soup.find_all('div', class_='m-jobsListItem')
+                
+                for job in job_listings:
+                    try:
+                        title = job.find('h2', class_='m-jobsListItem__title').text.strip()
+                        company = job.find('div', class_='m-jobsListItem__company').text.strip()
+                        location = job.find('div', class_='m-jobsListItem__location').text.strip()
+                        url = "https://www.karriere.at" + job.find('a')['href']
+                        
+                        # Get detailed job info
+                        job_response = requests.get(url, headers=headers)
+                        job_soup = BeautifulSoup(job_response.text, 'html.parser')
+                        
+                        description = job_soup.find('div', class_='m-jobDetail__description')
+                        description = description.text.strip() if description else "Keine Beschreibung verfügbar"
+                        
+                        salary = job_soup.find('div', class_='m-jobDetail__salary')
+                        salary = salary.text.strip() if salary else "Gehalt auf Anfrage"
+                        
+                        # Calculate match score based on keywords
+                        match_score = calculate_match_score(title, description)
+                        
+                        jobs.append({
+                            'title': title,
+                            'company': company,
+                            'location': location,
+                            'salary': salary,
+                            'match_score': match_score,
+                            'description': description,
+                            'url': url,
+                            'source': 'karriere.at',
+                            'posting_date': datetime.now().strftime('%Y-%m-%d'),  # Echtes Datum extrahieren
+                            'match_details': analyze_match_details(description)
+                        })
+                        
+                        time.sleep(1)  # Höflichkeitspause zwischen Requests
+                        
+                    except Exception as e:
+                        print(f"Fehler beim Parsen eines Jobs: {str(e)}")
+                        continue
+                        
+        except Exception as e:
+            print(f"Fehler beim Scraping von karriere.at: {str(e)}")
+    
+    # Match Score Berechnung
+    def calculate_match_score(title, description):
+        keywords = {
+            'high_value': [
+                'führung', 'leitung', 'head', 'director', 'transformation',
+                'change management', 'strategisch', 'digital'
             ],
-            'match_details': {
-                'perfect_matches': [
-                    'Führungserfahrung HR',
-                    'Transformationserfahrung',
-                    'Internationale Teams',
-                    'Sprachkenntnisse'
-                ],
-                'good_matches': [
-                    'Change Management',
-                    'Digitalisierung',
-                    'Talent Development'
-                ],
-                'development_areas': [
-                    'Banking-Regulierung',
-                    'Fintech-Entwicklungen'
-                ]
-            },
-            'posting_date': '2024-10-25',
-            'company_benefits': [
-                'Flexible Arbeitszeiten',
-                'Internationale Karriere',
-                'Weiterbildungsbudget',
-                'Remote Work Möglichkeit'
-            ],
-            'application_deadline': '2024-11-30'
-        },
-                {
-            'title': 'Leiter People & Culture',
-            'company': 'Österreichische Post AG',
-            'location': 'Wien',
-            'salary': '110k-140k',
-            'match_score': 88,
-            'description': '''### Rolle & Verantwortung
-• Strategische P&C Leitung
-• Transformation der HR-Funktion
-• Kulturentwicklung & Change
-• Führung des P&C Teams
-
-### Schwerpunkte
-• New Work & Kulturwandel
-• Employee Experience
-• Talent & Leadership Development
-• Employer Branding
-
-### Anforderungsprofil
-• HR-Führungserfahrung
-• Change Management Expertise
-• Innovatives Mindset
-• Exzellente Kommunikation''',
-            'url': 'https://karriere.post.at',
-            'requirements': [
-                'HR-Führung',
-                'Change Management',
-                'Kulturentwicklung',
-                'Kommunikation'
-            ],
-            'match_details': {
-                'perfect_matches': [
-                    'Organisationsentwicklung',
-                    'Change Management',
-                    'Führungserfahrung'
-                ],
-                'good_matches': [
-                    'Kulturentwicklung',
-                    'Talent Management',
-                    'Kommunikation'
-                ],
-                'development_areas': [
-                    'Logistik-Branche',
-                    'Gewerkschaftsarbeit'
-                ]
-            },
-            'posting_date': '2024-10-26',
-            'company_benefits': [
-                'Work-Life-Balance',
-                'Entwicklungsmöglichkeiten',
-                'Betriebliche Sozialleistungen',
-                'Gesundheitsförderung'
-            ],
-            'application_deadline': '2024-11-25'
+            'medium_value': [
+                'personal', 'hr', 'human resources', 'entwicklung',
+                'international', 'talent', 'kultur'
+            ]
         }
-    ]
+        
+        score = 0
+        text = (title + ' ' + description).lower()
+        
+        for word in keywords['high_value']:
+            if word in text:
+                score += 10
+                
+        for word in keywords['medium_value']:
+            if word in text:
+                score += 5
+                
+        return min(95, max(60, score))  # Score zwischen 60 und 95
+    
+    # Match Details Analyse
+    def analyze_match_details(description):
+        skills_matches = {
+            'perfect_matches': [],
+            'good_matches': [],
+            'development_areas': []
+        }
+        
+        text = description.lower()
+        
+        # Skill-Matching Logik
+        leadership_keywords = ['führung', 'leitung', 'management']
+        digital_keywords = ['digital', 'transformation', 'change']
+        hr_keywords = ['personal', 'hr', 'recruiting', 'talent']
+        
+        if any(keyword in text for keyword in leadership_keywords):
+            skills_matches['perfect_matches'].append('Führungserfahrung')
+        
+        if any(keyword in text for keyword in digital_keywords):
+            skills_matches['perfect_matches'].append('Digitale Transformation')
+        
+        if any(keyword in text for keyword in hr_keywords):
+            skills_matches['good_matches'].append('HR Expertise')
+        
+        return skills_matches
+    
+    # Scraping starten
+    scrape_karriere_at()
+    
+    return jobs
 
 def search_jobs(keywords, locations, salary_range, min_match):
     all_jobs = get_job_data()
