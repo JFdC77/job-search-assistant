@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import requests
+import feedparser
 from bs4 import BeautifulSoup
-import time
-
-# Für Error Handling
 import logging
+
+# Logging Setup
 logging.basicConfig(level=logging.INFO)
 
 # Seiteneinstellungen
@@ -17,33 +16,45 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-import requests
-from bs4 import BeautifulSoup
-import time
-
-import feedparser
-from datetime import datetime
-import logging
-logging.basicConfig(level=logging.INFO)
-
 def get_job_data():
     jobs = []
     
     # RSS Feeds holen
     def get_rss_jobs():
+        logging.info("Starte Job-Suche...")
         feeds = [
-            'https://www.karriere.at/jobs/feed?q=HR+Leitung',
-            'https://www.karriere.at/jobs/feed?q=Head+of+HR',
-            'https://www.karriere.at/jobs/feed?q=Personalleitung'
+            # Karriere.at - Wien
+            'https://www.karriere.at/jobs/feed?q=HR+Leitung&loc=wien',
+            'https://www.karriere.at/jobs/feed?q=Head+of+HR&loc=wien',
+            'https://www.karriere.at/jobs/feed?q=Personalleitung&loc=wien',
+            'https://www.karriere.at/jobs/feed?q=HR+Director&loc=wien',
+            'https://www.karriere.at/jobs/feed?q=People+Culture&loc=wien',
+            # Österreich - andere Städte
+            'https://www.karriere.at/jobs/feed?q=HR+Leitung&loc=graz',
+            'https://www.karriere.at/jobs/feed?q=HR+Leitung&loc=linz',
+            'https://www.karriere.at/jobs/feed?q=HR+Leitung&loc=salzburg',
+            # Deutschland
+            'https://www.karriere.at/jobs/feed?q=HR+Leitung&loc=stuttgart',
+            'https://www.karriere.at/jobs/feed?q=HR+Leitung&loc=munchen',
+            # Zusätzliche Suchbegriffe
+            'https://www.karriere.at/jobs/feed?q=Organisationsentwicklung',
+            'https://www.karriere.at/jobs/feed?q=Change+Management',
+            'https://www.karriere.at/jobs/feed?q=HR+Business+Partner',
+            'https://www.karriere.at/jobs/feed?q=HR+Manager'
         ]
         
         rss_jobs = []
         for feed_url in feeds:
             try:
+                logging.info(f"Prüfe Feed: {feed_url}")
                 feed = feedparser.parse(feed_url)
+                logging.info(f"Gefundene Einträge in Feed: {len(feed.entries)}")
+                
                 for entry in feed.entries:
-                    # Match-Score berechnen
+                    logging.info(f"Analysiere Job: {entry.title}")
                     score = calculate_match_score(entry.title, entry.description)
+                    logging.info(f"Match Score: {score}")
+                    
                     if score >= 60:  # Nur relevante Jobs
                         job = {
                             'title': entry.title,
@@ -56,9 +67,12 @@ def get_job_data():
                             'posting_date': entry.published,
                             'match_details': analyze_match_details(entry.description)
                         }
+                        logging.info(f"Job hinzugefügt: {job['title']} ({job['company']})")
                         rss_jobs.append(job)
             except Exception as e:
                 logging.error(f"Fehler beim Feed {feed_url}: {str(e)}")
+                
+        logging.info(f"Insgesamt gefunden: {len(rss_jobs)} Jobs")
         return rss_jobs
     
     def calculate_match_score(title, description):
@@ -77,91 +91,77 @@ def get_job_data():
         
         score = 0
         text = (title + ' ' + description).lower()
+        logging.debug(f"Analysiere Text für Score: {title}")
         
         for word in keywords['high_value']:
             if word in text:
                 score += 10
+                logging.debug(f"High-Value Keyword gefunden: {word} (+10)")
         for word in keywords['medium_value']:
             if word in text:
                 score += 5
+                logging.debug(f"Medium-Value Keyword gefunden: {word} (+5)")
                 
-        return min(95, max(60, score))
-
-    def extract_location(text):
+        final_score = min(95, max(60, score))
+        logging.debug(f"Finaler Score: {final_score}")
+        return final_score
+            def extract_location(text):
         locations = ['Wien', 'Stuttgart', 'München', 'Graz', 'Linz', 'Salzburg']
         text = text.lower()
         found_locations = [loc for loc in locations if loc.lower() in text]
-        return found_locations[0] if found_locations else 'Unbekannt'
+        location = found_locations[0] if found_locations else 'Unbekannt'
+        logging.debug(f"Extrahierter Standort: {location}")
+        return location
 
     def extract_salary(description):
-        # Einfache Gehaltsextraktion
+        logging.debug("Analysiere Gehaltsangaben")
         if 'EUR' in description or '€' in description:
             if '120' in description:
+                logging.debug("Gehalt gefunden: 120k-150k")
                 return '120k-150k'
             elif '100' in description:
+                logging.debug("Gehalt gefunden: 100k-130k")
                 return '100k-130k'
+        logging.debug("Kein Gehalt gefunden")
         return 'k.A.'
 
     def clean_description(html):
-        # HTML Tags entfernen und Text säubern
-        from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, 'html.parser')
-        return soup.get_text().strip()
+        cleaned = soup.get_text().strip()
+        logging.debug(f"Beschreibung gereinigt: {len(cleaned)} Zeichen")
+        return cleaned
 
     def analyze_match_details(description):
-        return {
+        logging.debug("Analysiere Match Details")
+        description = description.lower()
+        matches = {
             'perfect_matches': [
                 skill for skill in [
                     'Führungserfahrung', 
                     'Transformationserfahrung',
                     'Internationale Teams',
                     'Sprachkenntnisse'
-                ] if skill.lower() in description.lower()
+                ] if skill.lower() in description
             ],
             'good_matches': [
                 skill for skill in [
                     'Change Management',
                     'Digitalisierung',
                     'Talent Development'
-                ] if skill.lower() in description.lower()
+                ] if skill.lower() in description
             ],
             'development_areas': [
                 'Branchenspezifische Kenntnisse',
                 'Lokale Marktexpertise'
             ]
         }
+        logging.debug(f"Gefundene Matches: {len(matches['perfect_matches'])} perfect, {len(matches['good_matches'])} good")
+        return matches
 
     # Jobs aus allen Quellen sammeln
     jobs.extend(get_rss_jobs())
-    
+    logging.info(f"Job-Suche abgeschlossen. Gefundene Jobs: {len(jobs)}")
     return jobs
-
-def search_jobs(keywords, locations, salary_range, min_match):
-    try:
-        all_jobs = get_job_data()
-        if not all_jobs:  # Wenn keine Jobs gefunden wurden
-            return pd.DataFrame()  # Leeres DataFrame zurückgeben
-            
-        df = pd.DataFrame(all_jobs)
-        
-        # Sicherstellen, dass alle erforderlichen Spalten existieren
-        required_columns = ['title', 'company', 'location', 'salary', 'match_score', 'description']
-        for col in required_columns:
-            if col not in df.columns:
-                df[col] = ''
-        
-        # Filter anwenden
-        if locations:
-            df = df[df['location'].isin(locations)]
-        
-        if min_match:
-            df = df[df['match_score'] >= min_match]
-        
-        return df
-        
-    except Exception as e:
-        logging.error(f"Fehler in search_jobs: {str(e)}")
-        return pd.DataFrame()  # Im Fehlerfall leeres DataFrame zurückgeben
 
 # Hauptanwendung
 st.title("Persönlicher Job Search Assistant")
@@ -206,10 +206,15 @@ with st.sidebar:
 # Hauptbereich
 if st.button("🔎 Neue Suche starten", type="primary"):
     with st.spinner('Suche läuft...'):
-        df = search_jobs(keywords, locations, salary_range, min_match)
+        # Debug Info anzeigen
+        st.info("Debug Information wird gesammelt...")
         
-        if not df.empty:
-            st.write(f"🎯 Gefunden: {len(df)} passende Positionen")
+        # Jobs suchen
+        jobs = get_job_data()
+        
+        if jobs:
+            df = pd.DataFrame(jobs)
+            st.success(f"🎯 Gefunden: {len(df)} passende Positionen")
             
             # Ergebnistabelle
             st.dataframe(
@@ -228,7 +233,6 @@ if st.button("🔎 Neue Suche starten", type="primary"):
             if selected_job:
                 job = df[df['title'] == selected_job].iloc[0]
                 
-                # Zwei Spalten Layout
                 col1, col2 = st.columns([3, 1])
                 
                 with col1:
@@ -241,9 +245,6 @@ if st.button("🔎 Neue Suche starten", type="primary"):
                     **Match Score:** {job['match_score']}%
                     
                     {job['description']}
-                    
-                    **Benefits:**
-                    {"".join([f"• {benefit}  \n" for benefit in job['company_benefits']])}
                     
                     [🔗 Zur Stellenanzeige]({job['url']})
                     """)
@@ -262,8 +263,8 @@ if st.button("🔎 Neue Suche starten", type="primary"):
                     st.markdown("#### 📚 Entwicklungsfelder")
                     for area in job['match_details']['development_areas']:
                         st.markdown(f"• {area}")
-                    
-                    st.markdown(f"**Bewerbungsfrist:** {job['application_deadline']}")
+        else:
+            st.warning("Keine passenden Jobs gefunden. Versuche andere Suchkriterien.")
 
 else:
     st.info("👆 Starte die Suche mit den ausgewählten Filtern")
