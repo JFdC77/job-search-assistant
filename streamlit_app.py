@@ -1,10 +1,12 @@
+Okay, hier ist der komplette überarbeitete Code mit direkter REST API Nutzung:
+
+```python
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 import requests
-import json
-from linkedin_api import Linkedin
 import logging
+from bs4 import BeautifulSoup
 
 # Logging Setup
 logging.basicConfig(level=logging.INFO)
@@ -20,55 +22,60 @@ st.set_page_config(
 def get_job_data():
     jobs = []
     
-    def get_linkedin_jobs():
+    def search_linkedin_jobs():
         try:
-            # LinkedIn Credentials aus Streamlit Secrets
-            api = Linkedin(
-                client_id=st.secrets["linkedin"]["client_id"],
-                client_secret=st.secrets["linkedin"]["client_secret"],
-                redirect_url="http://localhost:8501"
-            )
-            
-            logging.info("Starte LinkedIn Suche...")
-            search_params = {
-                'keywords': [
-                    'Head HR', 'HR Director', 'People Culture',
-                    'HR Leitung', 'Personalleitung'
-                ],
-                'locations': [
-                    'Wien', 'Stuttgart', 'München',
-                    'Graz', 'Linz', 'Salzburg'
-                ],
-                'experience': ['director', 'executive']
+            headers = {
+                'Authorization': f'Bearer {st.secrets["linkedin"]["client_secret"]}',
+                'X-Restli-Protocol-Version': '2.0.0'
             }
             
-            results = api.search_jobs(
-                keywords=search_params['keywords'],
-                location=search_params['locations']
-            )
+            search_locations = ['Vienna,Austria', 'Stuttgart,Germany', 'Munich,Germany']
+            search_keywords = ['HR Director', 'Head of HR', 'HR Leitung']
             
-            for job in results:
-                score = calculate_match_score(job)
-                if score >= 60:
-                    processed_job = {
-                        'title': job.get('title', 'Keine Angabe'),
-                        'company': job.get('companyName', 'Unbekannt'),
-                        'location': job.get('location', 'Unbekannt'),
-                        'salary': extract_salary(job),
-                        'description': job.get('description', ''),
-                        'url': f"https://www.linkedin.com/jobs/view/{job.get('id')}",
-                        'match_score': score,
-                        'posting_date': job.get('postedAt', datetime.now().strftime('%Y-%m-%d')),
-                        'match_details': analyze_match_details(job)
-                    }
-                    jobs.append(processed_job)
+            for location in search_locations:
+                for keyword in search_keywords:
+                    endpoint = 'https://api.linkedin.com/v2/jobSearch'
                     
-            logging.info(f"LinkedIn Jobs gefunden: {len(jobs)}")
-            
+                    params = {
+                        'keywords': keyword,
+                        'location': location,
+                        'count': 25,
+                        'filters': {
+                            'seniority': ['DIRECTOR', 'EXECUTIVE'],
+                            'salary': {'minimum': 120000}
+                        }
+                    }
+                    
+                    logging.info(f"Suche Jobs: {keyword} in {location}")
+                    response = requests.get(endpoint, headers=headers, params=params)
+                    
+                    if response.status_code == 200:
+                        results = response.json()
+                        
+                        for job in results.get('elements', []):
+                            score = calculate_match_score(job)
+                            if score >= 60:
+                                processed_job = {
+                                    'title': job.get('title', 'Keine Angabe'),
+                                    'company': job.get('companyName', 'Unbekannt'),
+                                    'location': job.get('location', 'Unbekannt'),
+                                    'salary': extract_salary(job),
+                                    'description': clean_description(job.get('description', '')),
+                                    'url': job.get('applyUrl', ''),
+                                    'match_score': score,
+                                    'posting_date': job.get('postedAt', datetime.now().strftime('%Y-%m-%d')),
+                                    'match_details': analyze_match_details(job)
+                                }
+                                jobs.append(processed_job)
+                                logging.info(f"Job gefunden: {processed_job['title']}")
+                    else:
+                        logging.error(f"API Fehler: {response.status_code}")
+                        st.error(f"LinkedIn API Fehler: {response.status_code}")
+                        
         except Exception as e:
-            st.error(f"LinkedIn API Fehler: {str(e)}")
-            logging.error(f"LinkedIn API Fehler: {str(e)}")
-            
+            logging.error(f"Fehler bei LinkedIn Suche: {str(e)}")
+            st.error(f"Fehler bei der Job-Suche: {str(e)}")
+    
     def calculate_match_score(job):
         keywords = {
             'high_value': [
@@ -85,8 +92,8 @@ def get_job_data():
         
         score = 0
         text = (
-            job.get('title', '') + ' ' + 
-            job.get('description', '') + ' ' + 
+            job.get('title', '') + ' ' +
+            job.get('description', '') + ' ' +
             job.get('companyName', '')
         ).lower()
         
@@ -103,17 +110,17 @@ def get_job_data():
         return min(95, max(60, score))
     
     def extract_salary(job):
-        salary_text = job.get('salary', '')
-        if not salary_text:
-            return 'k.A.'
-        
-        # Einfache Gehaltsextraktion
-        if 'EUR' in salary_text or '€' in salary_text:
-            if '120' in salary_text:
-                return '120k-150k'
-            elif '100' in salary_text:
-                return '100k-130k'
-        return salary_text
+        salary_info = job.get('salary', {})
+        if salary_info:
+            min_salary = salary_info.get('minimum', 0)
+            max_salary = salary_info.get('maximum', 0)
+            if min_salary and max_salary:
+                return f"{int(min_salary/1000)}k-{int(max_salary/1000)}k"
+        return 'k.A.'
+    
+    def clean_description(html):
+        soup = BeautifulSoup(html, 'html.parser')
+        return soup.get_text().strip()
     
     def analyze_match_details(job):
         description = job.get('description', '').lower()
@@ -139,9 +146,9 @@ def get_job_data():
             ]
         }
     
-    # Jobs von LinkedIn holen
-    get_linkedin_jobs()
-    
+    # Jobs suchen
+    search_linkedin_jobs()
+    logging.info(f"Job-Suche abgeschlossen. Gefundene Jobs: {len(jobs)}")
     return jobs
 
 # Hauptanwendung
@@ -240,7 +247,9 @@ if st.button("🔎 Neue Suche starten", type="primary"):
                     st.markdown("#### 📚 Entwicklungsfelder")
                     for area in job['match_details']['development_areas']:
                         st.markdown(f"• {area}")
+        else:
+            st.warning("Keine Jobs gefunden. Bitte andere Suchkriterien probieren.")
 
 # Footer
 st.markdown("---")
-st.markdown("*Powered by Streamlit & LinkedIn* • *JFdC/Claude*")
+st.markdown("*Powered by LinkedIn API* • *JFdC/Claude, vX*")
