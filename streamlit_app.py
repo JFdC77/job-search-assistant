@@ -16,31 +16,55 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+def get_linkedin_access_token():
+    try:
+        auth_url = "https://www.linkedin.com/oauth/v2/accessToken"
+        data = {
+            'grant_type': 'client_credentials',
+            'client_id': st.secrets["linkedin"]["client_id"],
+            'client_secret': st.secrets["linkedin"]["client_secret"]
+        }
+        
+        logging.info("Versuche Access Token zu erhalten...")
+        response = requests.post(auth_url, data=data)
+        if response.status_code == 200:
+            logging.info("Access Token erfolgreich erhalten")
+            return response.json()['access_token']
+        else:
+            logging.error(f"Auth Error: {response.status_code}")
+            st.error(f"Authorization fehlgeschlagen: {response.status_code}")
+            return None
+    except Exception as e:
+        logging.error(f"Auth Error: {str(e)}")
+        st.error(f"Authorization Error: {str(e)}")
+        return None
+
 def get_job_data():
     jobs = []
     
     def search_linkedin_jobs():
         try:
+            access_token = get_linkedin_access_token()
+            if not access_token:
+                return []
+            
             headers = {
-                'Authorization': f'Bearer {st.secrets["linkedin"]["client_secret"]}',
-                'X-Restli-Protocol-Version': '2.0.0'
+                'Authorization': f'Bearer {access_token}',
+                'X-Restli-Protocol-Version': '2.0.0',
+                'Content-Type': 'application/json'
             }
             
             search_locations = ['Vienna,Austria', 'Stuttgart,Germany', 'Munich,Germany']
             search_keywords = ['HR Director', 'Head of HR', 'HR Leitung']
             
+            endpoint = 'https://api.linkedin.com/v2/jobs/search'
+            
             for location in search_locations:
                 for keyword in search_keywords:
-                    endpoint = 'https://api.linkedin.com/v2/jobSearch'
-                    
                     params = {
                         'keywords': keyword,
                         'location': location,
-                        'count': 25,
-                        'filters': {
-                            'seniority': ['DIRECTOR', 'EXECUTIVE'],
-                            'salary': {'minimum': 120000}
-                        }
+                        'count': 25
                     }
                     
                     logging.info(f"Suche Jobs: {keyword} in {location}")
@@ -48,31 +72,34 @@ def get_job_data():
                     
                     if response.status_code == 200:
                         results = response.json()
+                        logging.info(f"Gefunden: {len(results.get('elements', []))} Jobs")
                         
                         for job in results.get('elements', []):
                             score = calculate_match_score(job)
                             if score >= 60:
-                                processed_job = {
-                                    'title': job.get('title', 'Keine Angabe'),
-                                    'company': job.get('companyName', 'Unbekannt'),
-                                    'location': job.get('location', 'Unbekannt'),
-                                    'salary': extract_salary(job),
-                                    'description': clean_description(job.get('description', '')),
-                                    'url': job.get('applyUrl', ''),
-                                    'match_score': score,
-                                    'posting_date': job.get('postedAt', datetime.now().strftime('%Y-%m-%d')),
-                                    'match_details': analyze_match_details(job)
-                                }
+                                processed_job = process_job(job, score)
                                 jobs.append(processed_job)
-                                logging.info(f"Job gefunden: {processed_job['title']}")
                     else:
-                        logging.error(f"API Fehler: {response.status_code}")
-                        st.error(f"LinkedIn API Fehler: {response.status_code}")
+                        logging.error(f"API Error: {response.status_code}")
+                        logging.error(f"Response: {response.text}")
+                        st.error(f"LinkedIn API Error: {response.status_code}")
                         
         except Exception as e:
             logging.error(f"Fehler bei LinkedIn Suche: {str(e)}")
             st.error(f"Fehler bei der Job-Suche: {str(e)}")
-    
+                def process_job(job, score):
+        return {
+            'title': job.get('title', 'Keine Angabe'),
+            'company': job.get('companyName', 'Unbekannt'),
+            'location': job.get('location', 'Unbekannt'),
+            'salary': extract_salary(job),
+            'description': clean_description(job.get('description', '')),
+            'url': job.get('applyUrl', '#'),
+            'match_score': score,
+            'posting_date': job.get('postedAt', datetime.now().strftime('%Y-%m-%d')),
+            'match_details': analyze_match_details(job)
+        }
+
     def calculate_match_score(job):
         keywords = {
             'high_value': [
@@ -249,4 +276,4 @@ if st.button("🔎 Neue Suche starten", type="primary"):
 
 # Footer
 st.markdown("---")
-st.markdown("*Powered by LinkedIn API* • *JFdC/Claude, vX*")
+st.markdown("*Powered by LinkedIn API* • *JFdC/Claude*")
