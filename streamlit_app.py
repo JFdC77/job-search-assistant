@@ -21,83 +21,57 @@ import requests
 from bs4 import BeautifulSoup
 import time
 
+import feedparser
+from datetime import datetime
+import logging
+logging.basicConfig(level=logging.INFO)
+
 def get_job_data():
     jobs = []
     
-    # Karriere.at
-    def scrape_karriere_at():
-        try:
-            search_terms = [
-                'Head+HR',
-                'Personalleitung',
-                'Head+of+People',
-                'HR+Director'
-            ]
-            
-            base_url = "https://www.karriere.at/jobs"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15'
-            }
-            
-            for term in search_terms:
-                url = f"{base_url}/{term}"
-                response = requests.get(url, headers=headers)
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                job_listings = soup.find_all('div', class_='m-jobsListItem')
-                
-                for job in job_listings:
-                    try:
-                        title = job.find('h2', class_='m-jobsListItem__title').text.strip()
-                        company = job.find('div', class_='m-jobsListItem__company').text.strip()
-                        location = job.find('div', class_='m-jobsListItem__location').text.strip()
-                        url = "https://www.karriere.at" + job.find('a')['href']
-                        
-                        # Get detailed job info
-                        job_response = requests.get(url, headers=headers)
-                        job_soup = BeautifulSoup(job_response.text, 'html.parser')
-                        
-                        description = job_soup.find('div', class_='m-jobDetail__description')
-                        description = description.text.strip() if description else "Keine Beschreibung verfügbar"
-                        
-                        salary = job_soup.find('div', class_='m-jobDetail__salary')
-                        salary = salary.text.strip() if salary else "Gehalt auf Anfrage"
-                        
-                        # Calculate match score based on keywords
-                        match_score = calculate_match_score(title, description)
-                        
-                        jobs.append({
-                            'title': title,
-                            'company': company,
-                            'location': location,
-                            'salary': salary,
-                            'match_score': match_score,
-                            'description': description,
-                            'url': url,
-                            'source': 'karriere.at',
-                            'posting_date': datetime.now().strftime('%Y-%m-%d'),  # Echtes Datum extrahieren
-                            'match_details': analyze_match_details(description)
-                        })
-                        
-                        time.sleep(1)  # Höflichkeitspause zwischen Requests
-                        
-                    except Exception as e:
-                        print(f"Fehler beim Parsen eines Jobs: {str(e)}")
-                        continue
-                        
-        except Exception as e:
-            print(f"Fehler beim Scraping von karriere.at: {str(e)}")
+    # RSS Feeds holen
+    def get_rss_jobs():
+        feeds = [
+            'https://www.karriere.at/jobs/feed?q=HR+Leitung',
+            'https://www.karriere.at/jobs/feed?q=Head+of+HR',
+            'https://www.karriere.at/jobs/feed?q=Personalleitung'
+        ]
+        
+        rss_jobs = []
+        for feed_url in feeds:
+            try:
+                feed = feedparser.parse(feed_url)
+                for entry in feed.entries:
+                    # Match-Score berechnen
+                    score = calculate_match_score(entry.title, entry.description)
+                    if score >= 60:  # Nur relevante Jobs
+                        job = {
+                            'title': entry.title,
+                            'company': entry.get('author', 'Unbekannt'),
+                            'location': extract_location(entry.title + ' ' + entry.description),
+                            'salary': extract_salary(entry.description),
+                            'description': clean_description(entry.description),
+                            'url': entry.link,
+                            'match_score': score,
+                            'posting_date': entry.published,
+                            'match_details': analyze_match_details(entry.description)
+                        }
+                        rss_jobs.append(job)
+            except Exception as e:
+                logging.error(f"Fehler beim Feed {feed_url}: {str(e)}")
+        return rss_jobs
     
-    # Match Score Berechnung
     def calculate_match_score(title, description):
         keywords = {
             'high_value': [
-                'führung', 'leitung', 'head', 'director', 'transformation',
-                'change management', 'strategisch', 'digital'
+                'führung', 'leitung', 'head', 'director', 
+                'transformation', 'change management', 
+                'strategisch', 'digital'
             ],
             'medium_value': [
-                'personal', 'hr', 'human resources', 'entwicklung',
-                'international', 'talent', 'kultur'
+                'personal', 'hr', 'human resources', 
+                'entwicklung', 'international', 
+                'talent', 'kultur'
             ]
         }
         
@@ -107,41 +81,58 @@ def get_job_data():
         for word in keywords['high_value']:
             if word in text:
                 score += 10
-                
         for word in keywords['medium_value']:
             if word in text:
                 score += 5
                 
-        return min(95, max(60, score))  # Score zwischen 60 und 95
-    
-    # Match Details Analyse
+        return min(95, max(60, score))
+
+    def extract_location(text):
+        locations = ['Wien', 'Stuttgart', 'München', 'Graz', 'Linz', 'Salzburg']
+        text = text.lower()
+        found_locations = [loc for loc in locations if loc.lower() in text]
+        return found_locations[0] if found_locations else 'Unbekannt'
+
+    def extract_salary(description):
+        # Einfache Gehaltsextraktion
+        if 'EUR' in description or '€' in description:
+            if '120' in description:
+                return '120k-150k'
+            elif '100' in description:
+                return '100k-130k'
+        return 'k.A.'
+
+    def clean_description(html):
+        # HTML Tags entfernen und Text säubern
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'html.parser')
+        return soup.get_text().strip()
+
     def analyze_match_details(description):
-        skills_matches = {
-            'perfect_matches': [],
-            'good_matches': [],
-            'development_areas': []
+        return {
+            'perfect_matches': [
+                skill for skill in [
+                    'Führungserfahrung', 
+                    'Transformationserfahrung',
+                    'Internationale Teams',
+                    'Sprachkenntnisse'
+                ] if skill.lower() in description.lower()
+            ],
+            'good_matches': [
+                skill for skill in [
+                    'Change Management',
+                    'Digitalisierung',
+                    'Talent Development'
+                ] if skill.lower() in description.lower()
+            ],
+            'development_areas': [
+                'Branchenspezifische Kenntnisse',
+                'Lokale Marktexpertise'
+            ]
         }
-        
-        text = description.lower()
-        
-        # Skill-Matching Logik
-        leadership_keywords = ['führung', 'leitung', 'management']
-        digital_keywords = ['digital', 'transformation', 'change']
-        hr_keywords = ['personal', 'hr', 'recruiting', 'talent']
-        
-        if any(keyword in text for keyword in leadership_keywords):
-            skills_matches['perfect_matches'].append('Führungserfahrung')
-        
-        if any(keyword in text for keyword in digital_keywords):
-            skills_matches['perfect_matches'].append('Digitale Transformation')
-        
-        if any(keyword in text for keyword in hr_keywords):
-            skills_matches['good_matches'].append('HR Expertise')
-        
-        return skills_matches
-    
-    # Scraping starten
-    scrape_karriere_at()
+
+    # Jobs aus allen Quellen sammeln
+    jobs.extend(get_rss_jobs())
     
     return jobs
 
