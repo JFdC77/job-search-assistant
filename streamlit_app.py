@@ -1,6 +1,13 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
+import time
+
+# Für Error Handling
+import logging
+logging.basicConfig(level=logging.INFO)
 
 # Seiteneinstellungen
 st.set_page_config(
@@ -139,23 +146,31 @@ def get_job_data():
     return jobs
 
 def search_jobs(keywords, locations, salary_range, min_match):
-    all_jobs = get_job_data()
-    df = pd.DataFrame(all_jobs)
-    
-    # Filter basierend auf den Suchkriterien
-    if locations:
-        df = df[df['location'].isin(locations)]
-    
-    # Gehaltsfilter
-    min_salary = int(df['salary'].str.extract('(\d+)k').astype(float).min())
-    if min_salary < salary_range[0]:
-        df = df[df['salary'].str.extract('(\d+)k').astype(float) >= salary_range[0]]
-    
-    # Match Score Filter
-    if min_match:
-        df = df[df['match_score'] >= min_match]
-    
-    return df
+    try:
+        all_jobs = get_job_data()
+        if not all_jobs:  # Wenn keine Jobs gefunden wurden
+            return pd.DataFrame()  # Leeres DataFrame zurückgeben
+            
+        df = pd.DataFrame(all_jobs)
+        
+        # Sicherstellen, dass alle erforderlichen Spalten existieren
+        required_columns = ['title', 'company', 'location', 'salary', 'match_score', 'description']
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = ''
+        
+        # Filter anwenden
+        if locations:
+            df = df[df['location'].isin(locations)]
+        
+        if min_match:
+            df = df[df['match_score'] >= min_match]
+        
+        return df
+        
+    except Exception as e:
+        logging.error(f"Fehler in search_jobs: {str(e)}")
+        return pd.DataFrame()  # Im Fehlerfall leeres DataFrame zurückgeben
 
 # Hauptanwendung
 st.title("Persönlicher Job Search Assistant")
