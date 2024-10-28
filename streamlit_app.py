@@ -87,7 +87,7 @@ def get_job_data():
         except Exception as e:
             logging.error(f"Fehler bei LinkedIn Suche: {str(e)}")
             st.error(f"Fehler bei der Job-Suche: {str(e)}")
-                def process_job(job, score):
+    def process_job(job, score):
         return {
             'title': job.get('title', 'Keine Angabe'),
             'company': job.get('companyName', 'Unbekannt'),
