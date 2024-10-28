@@ -146,7 +146,7 @@ def get_job_data():
 
 # Hauptanwendung
 st.title("Persönlicher Job Search Assistant")
-st.write("Optimiert für JFdC")
+st.write("Optimiert für HR & Organisationsentwicklung Positionen in DACH")
 
 # Sidebar Filter
 with st.sidebar:
