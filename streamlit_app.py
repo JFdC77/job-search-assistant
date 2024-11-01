@@ -6,6 +6,23 @@ from datetime import datetime
 
 st.set_page_config(page_title="Job Search Assistant", layout="wide")
 
+def clean_location(location):
+    """Bereinigt Standortangaben"""
+    location = location.lower()
+    if 'wien' in location:
+        return 'Wien'
+    elif 'graz' in location:
+        return 'Graz'
+    elif 'linz' in location:
+        return 'Linz'
+    elif 'salzburg' in location:
+        return 'Salzburg'
+    elif 'stuttgart' in location:
+        return 'Stuttgart'
+    elif 'münchen' in location or 'munich' in location:
+        return 'München'
+    return location
+
 def calculate_match_score(job_text):
     keywords = {
         'high_value': [
@@ -48,42 +65,52 @@ def get_jobs():
         'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15'
     }
     
-    total_jobs = 0
+    total_found = 0
+    
     for url in base_urls:
         try:
             response = requests.get(url, headers=headers)
             soup = BeautifulSoup(response.text, 'html.parser')
             jobs = soup.find_all('div', class_='m-jobsListItem')
-            total_jobs += len(jobs)
+            
+            st.write(f"Gefunden in {url}: {len(jobs)} Jobs")
+            total_found += len(jobs)
             
             for job in jobs:
-                # Basis-Informationen
-                title = job.find('h2').text.strip() if job.find('h2') else 'Kein Titel'
-                company = job.find('div', class_='m-jobsListItem__company').text.strip() if job.find('div', class_='m-jobsListItem__company') else 'Unbekannt'
-                location = job.find('div', class_='m-jobsListItem__location').text.strip() if job.find('div', class_='m-jobsListItem__location') else 'Unbekannt'
-                link = "https://www.karriere.at" + job.find('a')['href'] if job.find('a') else '#'
-                
-                # Zusätzliche Details
-                description = job.find('div', class_='m-jobsListItem__description')
-                description_text = description.text.strip() if description else ''
-                
-                # Match Score berechnen
-                match_score = calculate_match_score(title + ' ' + description_text)
-                
-                all_jobs.append({
-                    'title': title,
-                    'company': company,
-                    'location': location,
-                    'description': description_text,
-                    'link': link,
-                    'match_score': match_score,
-                    'date': datetime.now().strftime('%Y-%m-%d')
-                })
-                
+                try:
+                    # Basis-Informationen
+                    title = job.find('h2').text.strip() if job.find('h2') else 'Kein Titel'
+                    company = job.find('div', class_='m-jobsListItem__company').text.strip() if job.find('div', class_='m-jobsListItem__company') else 'Unbekannt'
+                    location = job.find('div', class_='m-jobsListItem__location').text.strip() if job.find('div', class_='m-jobsListItem__location') else 'Unbekannt'
+                    location = clean_location(location)
+                    link = "https://www.karriere.at" + job.find('a')['href'] if job.find('a') else '#'
+                    
+                    # Zusätzliche Details
+                    description = job.find('div', class_='m-jobsListItem__description')
+                    description_text = description.text.strip() if description else ''
+                    
+                    # Match Score
+                    match_score = calculate_match_score(title + ' ' + description_text)
+                    
+                    all_jobs.append({
+                        'title': title,
+                        'company': company,
+                        'location': location,
+                        'description': description_text,
+                        'link': link,
+                        'match_score': match_score,
+                        'date': datetime.now().strftime('%Y-%m-%d')
+                    })
+                    
+                except Exception as e:
+                    st.warning(f"Fehler beim Verarbeiten eines Jobs: {str(e)}")
+                    continue
+                    
         except Exception as e:
             st.error(f"Fehler beim Abrufen von {url}: {str(e)}")
+            continue
     
-    st.success(f"Insgesamt {total_jobs} Jobs gefunden")
+    st.success(f"Insgesamt {total_found} Jobs gefunden")
     return pd.DataFrame(all_jobs)
 
 # UI
@@ -109,46 +136,41 @@ with st.sidebar:
         help="Minimaler Match Score in %"
     )
 
-# Main
-col1, col2, col3 = st.columns(3)
+# Main Area
+col1, col2 = st.columns([2,1])
 with col1:
     search_button = st.button("🔎 Neue Suche starten", type="primary", use_container_width=True)
 with col2:
-    sort_by = st.selectbox("Sortieren nach", ["Match Score", "Unternehmen", "Standort"])
-with col3:
-    ascending = st.checkbox("Aufsteigend sortieren", value=False)
+    sort_ascending = st.checkbox("Aufsteigend sortieren", value=False)
 
 if search_button:
     with st.spinner('Suche läuft...'):
-        df = get_jobs()
-        
-        # Filter
-        if locations:
-            df = df[df['location'].str.contains('|'.join(locations), case=False)]
-        df = df[df['match_score'] >= min_score]
-        
-        # Sortierung
-        if sort_by == "Match Score":
-            df = df.sort_values('match_score', ascending=ascending)
-        elif sort_by == "Unternehmen":
-            df = df.sort_values('company', ascending=ascending)
-        else:
-            df = df.sort_values('location', ascending=ascending)
-        
-        if not df.empty:
-            # Results Table
-            st.dataframe(
-                df[['title', 'company', 'location', 'match_score']].style.background_gradient(
-                    subset=['match_score'],
-                    cmap='RdYlGn',
-                    vmin=60,
-                    vmax=100
-                ),
-                use_container_width=True
-            )
+        try:
+            df = get_jobs()
             
-            # Job Details
+            # Filtering
+            if locations:
+                st.info(f"Filtere nach Standorten: {', '.join(locations)}")
+                df = df[df['location'].isin(locations)]
+            
+            df = df[df['match_score'] >= min_score]
+            
+            # Sorting
+            df = df.sort_values('match_score', ascending=sort_ascending)
+            
             if len(df) > 0:
+                # Display Results
+                st.dataframe(
+                    df[['title', 'company', 'location', 'match_score']].style.background_gradient(
+                        subset=['match_score'],
+                        cmap='RdYlGn',
+                        vmin=60,
+                        vmax=100
+                    ),
+                    use_container_width=True
+                )
+                
+                # Job Details Section
                 st.subheader("🔍 Job Details")
                 selected_job = st.selectbox(
                     "Position auswählen:",
@@ -176,12 +198,17 @@ if search_button:
                     with col2:
                         st.info(f"""
                         **Match Details**
-                        - Führungsposition ✓
+                        - Positionslevel ✓
                         - Standort passend ✓
-                        - Branche relevant ✓
+                        - Aufgabenbereich relevant ✓
                         """)
-        else:
-            st.warning("Keine passenden Jobs gefunden.")
+            else:
+                st.warning(f"Keine Jobs in {', '.join(locations)} mit Match Score >= {min_score} gefunden.")
+                st.info("Versuche andere Standorte oder einen niedrigeren Match Score.")
+        
+        except Exception as e:
+            st.error(f"Ein Fehler ist aufgetreten: {str(e)}")
+            st.info("Bitte versuche es erneut oder ändere die Suchkriterien.")
 
 st.markdown("---")
 st.markdown("*Powered by karriere.at* • *JFdC/Claude*")
