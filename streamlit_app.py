@@ -1,59 +1,52 @@
 import streamlit as st
 import pandas as pd
-import feedparser
+import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
-import logging
 
 st.set_page_config(page_title="Job Search Assistant", layout="wide")
 
-# Debug Mode
-DEBUG = True
-
-def get_karriere_at_jobs():
-    jobs = []
-    st.info("Suche Jobs auf karriere.at...")
+def get_jobs():
+    st.info("Suche Jobs...")
+    all_jobs = []
     
-    # RSS Feeds für verschiedene Suchbegriffe
-    feeds = [
-        "https://www.karriere.at/jobs/hr-leitung/rss",
-        "https://www.karriere.at/jobs/personalleitung/rss",
-        "https://www.karriere.at/jobs/head-of-hr/rss",
-        "https://www.karriere.at/jobs/hr-direktor/rss"
+    # Basis URLs
+    base_urls = [
+        "https://www.karriere.at/jobs/hr-leitung",
+        "https://www.karriere.at/jobs/personalleitung",
+        "https://www.karriere.at/jobs/head-of-hr"
     ]
     
-    total_entries = 0
-    for feed_url in feeds:
-        if DEBUG:
-            st.write(f"Prüfe Feed: {feed_url}")
-        
-        feed = feedparser.parse(feed_url)
-        entries = feed.entries
-        total_entries += len(entries)
-        
-        if DEBUG:
-            st.write(f"Gefundene Einträge: {len(entries)}")
-        
-        for entry in entries:
-            job = {
-                'title': entry.title,
-                'company': entry.author if hasattr(entry, 'author') else 'Unbekannt',
-                'location': extract_location(entry.title),
-                'description': entry.description,
-                'link': entry.link,
-                'published': entry.published
-            }
-            jobs.append(job)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15'
+    }
     
-    st.success(f"Insgesamt {total_entries} Jobs gefunden")
-    return pd.DataFrame(jobs)
-
-def extract_location(title):
-    locations = ['Wien', 'Graz', 'Linz', 'Salzburg', 'Innsbruck', 'Klagenfurt', 
-                'Stuttgart', 'München']
-    for loc in locations:
-        if loc in title:
-            return loc
-    return 'Andere'
+    for url in base_urls:
+        try:
+            st.write(f"Suche: {url}")
+            response = requests.get(url, headers=headers)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Finde alle Job-Listings
+            jobs = soup.find_all('div', class_='m-jobsListItem')
+            
+            for job in jobs:
+                title = job.find('h2').text.strip() if job.find('h2') else 'Kein Titel'
+                company = job.find('div', class_='m-jobsListItem__company').text.strip() if job.find('div', class_='m-jobsListItem__company') else 'Unbekannt'
+                location = job.find('div', class_='m-jobsListItem__location').text.strip() if job.find('div', class_='m-jobsListItem__location') else 'Unbekannt'
+                link = "https://www.karriere.at" + job.find('a')['href'] if job.find('a') else '#'
+                
+                all_jobs.append({
+                    'title': title,
+                    'company': company,
+                    'location': location,
+                    'link': link
+                })
+                
+        except Exception as e:
+            st.error(f"Fehler beim Abrufen von {url}: {str(e)}")
+    
+    return pd.DataFrame(all_jobs)
 
 # UI
 st.title("Job Search Assistant")
@@ -61,46 +54,50 @@ st.title("Job Search Assistant")
 # Sidebar Filter
 with st.sidebar:
     st.header("🔍 Filter")
-    selected_locations = st.multiselect(
+    locations = st.multiselect(
         "Standorte",
         ['Wien', 'Graz', 'Linz', 'Salzburg', 'Stuttgart', 'München'],
         default=['Wien']
     )
 
 # Main
-if st.button("🔎 Jobs suchen"):
+if st.button("🔎 Jobs suchen", type="primary"):
     with st.spinner('Suche läuft...'):
-        df = get_karriere_at_jobs()
+        df = get_jobs()
         
-        # Filter by location
-        if selected_locations:
-            df = df[df['location'].isin(selected_locations)]
+        # Location Filter
+        if locations:
+            df = df[df['location'].str.contains('|'.join(locations), case=False)]
         
-        # Show results
         if not df.empty:
-            st.write("### Gefundene Positionen")
+            st.success(f"{len(df)} Jobs gefunden")
+            
+            # Results Table
             st.dataframe(
-                df[['title', 'company', 'location', 'published']],
+                df[['title', 'company', 'location']],
                 use_container_width=True
             )
             
-            # Detailed view
-            st.write("### Job Details")
-            selected_job = st.selectbox(
-                "Position auswählen:",
-                df['title'].tolist()
-            )
-            
-            if selected_job:
-                job = df[df['title'] == selected_job].iloc[0]
-                st.write(f"**Unternehmen:** {job['company']}")
-                st.write(f"**Standort:** {job['location']}")
-                st.write(f"**Veröffentlicht:** {job['published']}")
-                st.write("**Beschreibung:**")
-                st.markdown(job['description'])
-                st.markdown(f"[➡️ Zur Ausschreibung]({job['link']})")
+            # Job Details
+            if len(df) > 0:
+                st.subheader("Job Details")
+                selected_job = st.selectbox(
+                    "Wähle eine Position:",
+                    df['title'].tolist()
+                )
+                
+                if selected_job:
+                    job = df[df['title'] == selected_job].iloc[0]
+                    
+                    st.markdown(f"""
+                    ### {job['title']}
+                    **Unternehmen:** {job['company']}  
+                    **Standort:** {job['location']}  
+                    
+                    [Zur Stellenanzeige]({job['link']})
+                    """)
         else:
-            st.warning("Keine Jobs gefunden")
+            st.warning("Keine passenden Jobs gefunden.")
 
 st.markdown("---")
-st.markdown("*Powered by karriere.at RSS* • *Built with Streamlit*")
+st.markdown("*Powered by karriere.at* • *JFdC/Claude*")
