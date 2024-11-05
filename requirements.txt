@@ -1,6 +1,4 @@
 streamlit
 pandas
 requests
-python-linkedin-v2
 beautifulsoup4
-feedparser
